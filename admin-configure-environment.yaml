@@ -1,0 +1,116 @@
+---
+- name: Deploy Elasticsearch ECK Operator and Create an Instance on OCP 4.20
+  hosts: localhost
+  connection: local
+  gather_facts: no
+  vars:
+    ansible_python_interpreter: "{{ lookup('env','VIRTUAL_ENV') + '/bin/python' }}"
+    operator_namespace: openshift-operators
+    es_namespace: openshift-logging
+    es_instance_name: elasticsearch
+
+  tasks:
+
+    - name: Ensure Elasticsearch operator namespace exists
+      kubernetes.core.k8s:
+        state: present
+        api_version: v1
+        kind: Namespace
+        name: "{{ operator_namespace }}"
+
+    - name: Ensure Elasticsearch instance namespace exists
+      kubernetes.core.k8s:
+        state: present
+        api_version: v1
+        kind: Namespace
+        name: "{{ es_namespace }}"
+
+    # ----------------------------------------------------
+    # Install Elasticsearch ECK Operator from OperatorHub
+    # ----------------------------------------------------
+    - name: Subscribe to Elasticsearch ECK operator
+      kubernetes.core.k8s:
+        state: present
+        kind: Subscription
+        api_version: operators.coreos.com/v1alpha1
+        namespace: "{{ operator_namespace }}"
+        name: elasticsearch-eck-operator
+        definition:
+          spec:
+            channel: stable
+            name: elasticsearch-eck-operator-certified
+            source: certified-operators
+            sourceNamespace: openshift-marketplace
+            installPlanApproval: Automatic
+
+    - name: Wait for Elasticsearch ECK Operator to become available
+      kubernetes.core.k8s_info:
+        api_version: apps/v1
+        kind: Deployment
+        namespace: "{{ operator_namespace }}"
+        name: elastic-operator
+      register: operator_deploy
+      until: operator_deploy.resources | length > 0 and operator_deploy.resources[0].status.availableReplicas|default(0) > 0
+      retries: 30
+      delay: 10
+
+    # ----------------------------------------------------
+    # Create Elasticsearch instance using ECK
+    # ----------------------------------------------------
+    - name: Deploy Elasticsearch instance
+      kubernetes.core.k8s:
+        state: present
+        namespace: "{{ es_namespace }}"
+        definition:
+          apiVersion: elasticsearch.k8s.elastic.co/v1
+          kind: Elasticsearch
+          metadata:
+            name: "{{ es_instance_name }}"
+          spec:
+            version: 8.15.0
+            nodeSets:
+              - name: default
+                count: 1
+                config:
+                  node.roles: ["master", "data"]
+                  node.store.allow_mmap: false
+                podTemplate:
+                  spec:
+                    containers:
+                      - name: elasticsearch
+                        resources:
+                          requests:
+                            memory: 2Gi
+                            cpu: 1
+                          limits:
+                            memory: 2Gi
+                            cpu: 2
+                        volumeMounts:
+                          - name: elasticsearch-data
+                            mountPath: /usr/share/elasticsearch/data
+                    volumes:
+                      - name: elasticsearch-data
+                        emptyDir: {}
+
+    - name: Wait for Elasticsearch cluster to be ready
+      kubernetes.core.k8s_info:
+        api_version: elasticsearch.k8s.elastic.co/v1
+        kind: Elasticsearch
+        namespace: "{{ es_namespace }}"
+        name: "{{ es_instance_name }}"
+      register: es_cluster
+      until: es_cluster.resources | length > 0 and es_cluster.resources[0].status.phase|default('') == 'Ready'
+      retries: 40
+      delay: 15
+
+    - name: Wait for Elasticsearch pods to be ready
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Pod
+        namespace: "{{ es_namespace }}"
+        label_selectors:
+          - elasticsearch.k8s.elastic.co/cluster-name={{ es_instance_name }}
+      register: es_pods
+      until: es_pods.resources | length > 0 and (es_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length) == (es_pods.resources | length)
+      retries: 40
+      delay: 15
