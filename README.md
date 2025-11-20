@@ -1,4 +1,4 @@
-# OpenShift Performance Benchmarking
+# OPEN-54 - OpenShift Performance Benchmarking lab
 
 Ansible automation for deploying Elasticsearch on OpenShift for performance testing.
 
