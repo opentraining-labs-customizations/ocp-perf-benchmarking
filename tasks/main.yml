@@ -1,4 +1,7 @@
 ---
+- name: Install kubernetes
+  command: pip install kubernetes==33.1.0
+  
 - name: Ensure Elasticsearch operator namespace exists
   kubernetes.core.k8s:
     state: present
