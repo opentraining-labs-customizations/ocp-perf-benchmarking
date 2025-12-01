@@ -1,7 +1,7 @@
 ---
 - name: Install kubernetes
   command: pip install kubernetes==33.1.0
-  
+
 - name: Ensure Elasticsearch operator namespace exists
   kubernetes.core.k8s:
     state: present
@@ -105,3 +105,22 @@
   until: es_pods.resources | length > 0 and (es_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length) == (es_pods.resources | length)
   retries: 40
   delay: 15
+
+- name: Create OpenShift route to expose Elasticsearch
+  kubernetes.core.k8s:
+    state: present
+    namespace: "{{ elasticsearch_namespace }}"
+    definition:
+      apiVersion: route.openshift.io/v1
+      kind: Route
+      metadata:
+        name: "{{ elasticsearch_instance_name }}-route"
+      spec:
+        to:
+          kind: Service
+          name: "{{ elasticsearch_instance_name }}-es-http"
+          weight: 100
+        port:
+          targetPort: https
+        tls:
+          termination: passthrough

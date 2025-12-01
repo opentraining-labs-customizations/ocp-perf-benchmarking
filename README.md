@@ -16,15 +16,29 @@ Ansible role for deploying Elasticsearch on OpenShift for the [OpenShift Perform
 
 ## Usage
 
+### Deploy Elasticsearch
 Deploy Elasticsearch cluster using the role:
 ```bash
-ansible-playbook deploy.yml
+ansible-playbook deploy.yml $(test -f inventory && echo "-i inventory")
 ```
 
 This will:
 - Install the Elasticsearch ECK operator
 - Deploy a single-node Elasticsearch 8.15.0 cluster
 - Configure 2Gi memory allocation with emptyDir storage
+- Create an OpenShift route for external access
+
+### Cleanup Elasticsearch
+Remove all deployed components:
+```bash
+ansible-playbook cleanup.yml $(test -f inventory && echo "-i inventory")
+```
+
+This will remove:
+- OpenShift route
+- Elasticsearch instance and associated resources
+- ECK operator subscription
+- Created namespaces (if safe to remove)
 
 ## Role Configuration
 
@@ -40,17 +54,22 @@ The role can be customized by overriding variables in `defaults/main.yml`:
 
 ## Testing Connectivity
 
-From within the cluster:
 ```bash
-# Get password
+# Check ElasticSearch health
+oc get elasticsearch -n openshift-logging
+
+# Get Elasticsearch password
 PASSWORD=$(oc get secret elasticsearch-es-elastic-user -n openshift-logging -o jsonpath='{.data.elastic}' | base64 -d)
 
-# Check cluster health
-oc exec -n openshift-logging elasticsearch-es-default-0 -- curl -k -u elastic:$PASSWORD https://elasticsearch-es-http.openshift-logging.svc.cluster.local:9200/_cluster/health?pretty
+# Get Elasticsearch route URL
+ES_INSTANCE=oc get route elasticsearch-route -n openshift-logging -o jsonpath='https://{.spec.host}'
+
+# Check endpoint
+curl -k -u elastic:$PASSWORD https://$ES_INSTANCE/_cluster/health?pretty
 ```
 
 ## Endpoint
 
-- **URL**: `https://elasticsearch-es-http.openshift-logging.svc.cluster.local:9200`
+- **URL**: Retrieved from the corresponding route
 - **User**: `elastic`
 - **Password**: Retrieved from `elasticsearch-es-elastic-user` secret
