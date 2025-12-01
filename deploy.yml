@@ -1,5 +1,5 @@
 ---
-- name: Deploy Elasticsearch ECK Operator and Create an Instance on OCP 4.20
+- name: Deploy Elasticsearch and Grafana on OCP 4.20
   hosts: localhost
   connection: local
   gather_facts: no

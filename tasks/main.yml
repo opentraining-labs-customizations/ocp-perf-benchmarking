@@ -124,3 +124,23 @@
           targetPort: https
         tls:
           termination: passthrough
+
+# ----------------------------------------------------
+# Grafana deployment
+# ----------------------------------------------------
+- name: Ensure Grafana operator namespace exists
+  kubernetes.core.k8s:
+    state: present
+    api_version: v1
+    kind: Namespace
+    name: "{{ grafana_operator_namespace }}"
+
+- name: Ensure Grafana instance namespace exists
+  kubernetes.core.k8s:
+    state: present
+    api_version: v1
+    kind: Namespace
+    name: "{{ grafana_namespace }}"
+
+- name: Import Grafana deployment tasks
+  import_tasks: grafana.yml

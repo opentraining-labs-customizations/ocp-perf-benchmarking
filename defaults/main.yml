@@ -2,14 +2,28 @@
 # Namespace configuration
 elasticsearch_operator_namespace: openshift-operators
 elasticsearch_namespace: openshift-logging
+grafana_operator_namespace: openshift-operators
+grafana_namespace: openshift-logging
 
 # Elasticsearch instance configuration
 elasticsearch_instance_name: elasticsearch
 elasticsearch_version: 8.15.0
 elasticsearch_node_count: 1
 
+# Grafana instance configuration
+grafana_instance_name: grafana
+grafana_admin_user: admin
+grafana_admin_password: admin123
+grafana_enable_anonymous: false
+
 # Resource allocation
 elasticsearch_memory_request: 2Gi
 elasticsearch_memory_limit: 2Gi
 elasticsearch_cpu_request: 1
 elasticsearch_cpu_limit: 2
+
+# Grafana resource allocation
+grafana_memory_request: 512Mi
+grafana_memory_limit: 1Gi
+grafana_cpu_request: 200m
+grafana_cpu_limit: 500m
