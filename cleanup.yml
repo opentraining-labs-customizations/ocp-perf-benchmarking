@@ -1,0 +1,17 @@
+---
+- name: Cleanup Elasticsearch ECK Operator and Instance from OCP
+  hosts: localhost
+  connection: local
+  gather_facts: no
+  vars:
+    ansible_python_interpreter: "{{ lookup('env','VIRTUAL_ENV') + '/bin/python' }}"
+
+  tasks:
+    - name: Include role defaults
+      include_vars: defaults/main.yml
+
+    - name: Install kubernetes
+      command: pip install kubernetes==33.1.0
+
+    - name: Import cleanup tasks
+      import_tasks: tasks/cleanup.yml

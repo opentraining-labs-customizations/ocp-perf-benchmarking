@@ -1,0 +1,144 @@
+---
+# Cleanup tasks - removes everything installed by main.yml in reverse order
+- name: Remove OpenShift route for Elasticsearch
+  kubernetes.core.k8s:
+    state: absent
+    api_version: route.openshift.io/v1
+    kind: Route
+    namespace: "{{ elasticsearch_namespace }}"
+    name: "{{ elasticsearch_instance_name }}-route"
+  ignore_errors: yes
+
+- name: Delete Elasticsearch instance
+  kubernetes.core.k8s:
+    state: absent
+    api_version: elasticsearch.k8s.elastic.co/v1
+    kind: Elasticsearch
+    namespace: "{{ elasticsearch_namespace }}"
+    name: "{{ elasticsearch_instance_name }}"
+  ignore_errors: yes
+
+- name: Wait for Elasticsearch instance to be deleted
+  kubernetes.core.k8s_info:
+    api_version: elasticsearch.k8s.elastic.co/v1
+    kind: Elasticsearch
+    namespace: "{{ elasticsearch_namespace }}"
+    name: "{{ elasticsearch_instance_name }}"
+  register: es_cleanup
+  until: es_cleanup.resources | length == 0
+  retries: 30
+  delay: 10
+  ignore_errors: yes
+
+- name: Remove Elasticsearch ECK operator subscription
+  kubernetes.core.k8s:
+    state: absent
+    api_version: operators.coreos.com/v1alpha1
+    kind: Subscription
+    namespace: "{{ elasticsearch_operator_namespace }}"
+    name: elasticsearch-eck-operator
+  ignore_errors: yes
+
+- name: Remove ClusterServiceVersion for ECK operator
+  kubernetes.core.k8s:
+    state: absent
+    api_version: operators.coreos.com/v1alpha1
+    kind: ClusterServiceVersion
+    namespace: "{{ elasticsearch_operator_namespace }}"
+    label_selectors:
+      - "operators.coreos.com/elasticsearch-eck-operator-certified.{{ elasticsearch_operator_namespace }}"
+  ignore_errors: yes
+
+- name: Wait for operator deployment to be removed
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    namespace: "{{ elasticsearch_operator_namespace }}"
+    name: elastic-operator
+  register: operator_cleanup
+  until: operator_cleanup.resources | length == 0
+  retries: 30
+  delay: 10
+  ignore_errors: yes
+
+- name: Remove Elasticsearch instance namespace
+  kubernetes.core.k8s:
+    state: absent
+    api_version: v1
+    kind: Namespace
+    name: "{{ elasticsearch_namespace }}"
+  ignore_errors: yes
+
+- name: Remove Elasticsearch operator namespace (if different from instance namespace)
+  kubernetes.core.k8s:
+    state: absent
+    api_version: v1
+    kind: Namespace
+    name: "{{ elasticsearch_operator_namespace }}"
+  when: elasticsearch_operator_namespace != elasticsearch_namespace
+  ignore_errors: yes
+
+# ----------------------------------------------------
+# Grafana cleanup
+# ----------------------------------------------------
+- name: Remove OpenShift route for Grafana
+  kubernetes.core.k8s:
+    state: absent
+    api_version: route.openshift.io/v1
+    kind: Route
+    namespace: "{{ grafana_namespace }}"
+    name: "{{ grafana_instance_name }}-route"
+  ignore_errors: yes
+
+- name: Delete Grafana instance
+  kubernetes.core.k8s:
+    state: absent
+    api_version: grafana.integreatly.org/v1beta1
+    kind: Grafana
+    namespace: "{{ grafana_namespace }}"
+    name: "{{ grafana_instance_name }}"
+  ignore_errors: yes
+
+- name: Wait for Grafana instance to be deleted
+  kubernetes.core.k8s_info:
+    api_version: grafana.integreatly.org/v1beta1
+    kind: Grafana
+    namespace: "{{ grafana_namespace }}"
+    name: "{{ grafana_instance_name }}"
+  register: grafana_cleanup
+  until: grafana_cleanup.resources | length == 0
+  retries: 30
+  delay: 10
+  ignore_errors: yes
+
+- name: Remove Grafana operator subscription
+  kubernetes.core.k8s:
+    state: absent
+    api_version: operators.coreos.com/v1alpha1
+    kind: Subscription
+    namespace: "{{ grafana_operator_namespace }}"
+    name: grafana-operator
+  ignore_errors: yes
+
+- name: Remove ClusterServiceVersion for Grafana operator
+  kubernetes.core.k8s:
+    state: absent
+    api_version: operators.coreos.com/v1alpha1
+    kind: ClusterServiceVersion
+    namespace: "{{ grafana_operator_namespace }}"
+    label_selectors:
+      - "operators.coreos.com/grafana-operator.{{ grafana_operator_namespace }}"
+  ignore_errors: yes
+
+- name: Wait for Grafana operator deployment to be removed
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    namespace: "{{ grafana_operator_namespace }}"
+    label_selectors:
+      - "app.kubernetes.io/name=grafana-operator"
+  register: grafana_operator_cleanup
+  until: grafana_operator_cleanup.resources | length == 0
+  retries: 30
+  delay: 10
+  ignore_errors: yes

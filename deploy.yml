@@ -1,5 +1,5 @@
 ---
-- name: Deploy Elasticsearch and Grafana on OCP 4.20
+- name: Deploy Elasticsearch and Grafana on OpenShift
   hosts: localhost
   connection: local
   gather_facts: no

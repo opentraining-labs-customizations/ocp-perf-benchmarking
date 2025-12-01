@@ -1,0 +1,149 @@
+---
+# ----------------------------------------------------
+# Install Grafana Operator from OperatorHub
+# ----------------------------------------------------
+- name: Subscribe to Grafana operator
+  kubernetes.core.k8s:
+    state: present
+    kind: Subscription
+    api_version: operators.coreos.com/v1alpha1
+    namespace: "{{ grafana_operator_namespace }}"
+    name: grafana-operator
+    definition:
+      spec:
+        channel: v5
+        name: grafana-operator
+        source: community-operators
+        sourceNamespace: openshift-marketplace
+        installPlanApproval: Automatic
+
+- name: Wait for Grafana Operator to become available
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    namespace: "{{ grafana_operator_namespace }}"
+    label_selectors:
+      - "app.kubernetes.io/name=grafana-operator"
+  register: grafana_operator_deploy
+  until: grafana_operator_deploy.resources | length > 0 and grafana_operator_deploy.resources[0].status.availableReplicas|default(0) > 0
+  retries: 30
+  delay: 10
+
+# ----------------------------------------------------
+# Create Grafana instance
+# ----------------------------------------------------
+- name: Deploy Grafana instance
+  kubernetes.core.k8s:
+    state: present
+    namespace: "{{ grafana_namespace }}"
+    definition:
+      apiVersion: grafana.integreatly.org/v1beta1
+      kind: Grafana
+      metadata:
+        name: "{{ grafana_instance_name }}"
+        labels:
+          dashboards: "{{ grafana_instance_name }}"
+      spec:
+        config:
+          log:
+            mode: console
+          auth:
+            disable_login_form: "{{ grafana_enable_anonymous | string }}"
+          security:
+            admin_user: "{{ grafana_admin_user }}"
+            admin_password: "{{ grafana_admin_password }}"
+        deployment:
+          spec:
+            replicas: 1
+            template:
+              spec:
+                containers:
+                  - name: grafana
+                    resources:
+                      requests:
+                        memory: "{{ grafana_memory_request }}"
+                        cpu: "{{ grafana_cpu_request }}"
+                      limits:
+                        memory: "{{ grafana_memory_limit }}"
+                        cpu: "{{ grafana_cpu_limit }}"
+
+- name: Wait for Grafana instance to be ready
+  kubernetes.core.k8s_info:
+    api_version: grafana.integreatly.org/v1beta1
+    kind: Grafana
+    namespace: "{{ grafana_namespace }}"
+    name: "{{ grafana_instance_name }}"
+  register: grafana_instance
+  until: grafana_instance.resources | length > 0 and grafana_instance.resources[0].status.stage|default('') == 'complete'
+  retries: 30
+  delay: 10
+
+- name: Wait for Grafana pods to be ready
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Pod
+    namespace: "{{ grafana_namespace }}"
+    label_selectors:
+      - "app=grafana"
+  register: grafana_pods
+  until: grafana_pods.resources | length > 0 and (grafana_pods.resources | selectattr('status.phase', 'equalto', 'Running') | list | length) == (grafana_pods.resources | length)
+  retries: 30
+  delay: 10
+
+- name: Create OpenShift route to expose Grafana
+  kubernetes.core.k8s:
+    state: present
+    namespace: "{{ grafana_namespace }}"
+    definition:
+      apiVersion: route.openshift.io/v1
+      kind: Route
+      metadata:
+        name: "{{ grafana_instance_name }}-route"
+      spec:
+        to:
+          kind: Service
+          name: "{{ grafana_instance_name }}-service"
+          weight: 100
+        port:
+          targetPort: 3000
+        tls:
+          termination: edge
+
+# ----------------------------------------------------
+# Configure Elasticsearch as Grafana datasource
+# ----------------------------------------------------
+- name: Create Elasticsearch datasource for Grafana
+  kubernetes.core.k8s:
+    state: present
+    namespace: "{{ grafana_namespace }}"
+    definition:
+      apiVersion: grafana.integreatly.org/v1beta1
+      kind: GrafanaDatasource
+      metadata:
+        name: "elasticsearch-datasource"
+        labels:
+          app: grafana
+      spec:
+        instanceSelector:
+          matchLabels:
+            dashboards: "{{ grafana_instance_name }}"
+        datasource:
+          name: "Elasticsearch"
+          type: "elasticsearch"
+          url: "https://{{ elasticsearch_instance_name }}-es-http.{{ elasticsearch_namespace }}.svc.cluster.local:9200"
+          access: "proxy"
+          isDefault: true
+          editable: false
+          basicAuth: true
+          basicAuthUser: "elastic"
+          jsonData:
+            timeField: "@timestamp"
+            esVersion: "8.0.0"
+            interval: "Daily"
+            tlsSkipVerify: true
+        valuesFrom:
+          - targetPath: "secureJsonData.basicAuthPassword"
+            valueFrom:
+              secretKeyRef:
+                name: "{{ elasticsearch_instance_name }}-es-elastic-user"
+                key: "elastic"
